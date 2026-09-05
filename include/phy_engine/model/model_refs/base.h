@@ -39,6 +39,9 @@ namespace phy_engine::model
             virtual constexpr bool step_changed_tr(double nlaststep, double nstep) noexcept = 0;
             virtual constexpr bool adapt_step(double& step) noexcept = 0;
             virtual constexpr bool check_convergence() noexcept = 0;
+            // Invoked only after every model's read-only residual passed.
+            // False means a discrete state changed and MNA must solve again.
+            virtual constexpr bool commit_converged_state() noexcept { return true; }
 
             // digital
             virtual constexpr ::phy_engine::digital::need_operate_analog_node_t
@@ -409,12 +412,21 @@ namespace phy_engine::model
                 // no model-specific checks for convergence
                 if constexpr(::phy_engine::model::defines::can_check_convergence<mod>)
                 {
-                    return check_convergence_define(::phy_engine::model::model_reserve_type<rcvmod_type>, m);
+                    return check_convergence_define(::phy_engine::model::model_reserve_type<rcvmod_type>, static_cast<rcvmod_type const&>(m));
                 }
                 else
                 {
                     return true;
                 }
+            }
+
+            virtual constexpr bool commit_converged_state() noexcept override
+            {
+                if constexpr(::phy_engine::model::defines::can_commit_converged_state<mod>)
+                {
+                    return commit_converged_state_define(::phy_engine::model::model_reserve_type<rcvmod_type>, m);
+                }
+                else { return true; }
             }
 
             virtual constexpr ::phy_engine::digital::need_operate_analog_node_t

@@ -1,4 +1,5 @@
 #pragma once
+#include <cmath>
 #include <fast_io/fast_io_dsal/string_view.h>
 #include "../../../../circuits/digital/update_table.h"
 #include "../../../model_refs/base.h"
@@ -40,13 +41,13 @@ namespace phy_engine::model
         {
             case 0:
             {
-                if(vi.type != ::phy_engine::model::variant_type::d) [[unlikely]] { return false; }
+                if(vi.type != ::phy_engine::model::variant_type::d || !::std::isfinite(vi.d)) [[unlikely]] { return false; }
                 clip.Ll = vi.d;
                 return true;
             }
             case 1:
             {
-                if(vi.type != ::phy_engine::model::variant_type::d) [[unlikely]] { return false; }
+                if(vi.type != ::phy_engine::model::variant_type::d || !::std::isfinite(vi.d)) [[unlikely]] { return false; }
                 clip.Hl = vi.d;
                 return true;
             }

@@ -1,4 +1,5 @@
 #pragma once
+#include <cmath>
 #include <fast_io/fast_io_dsal/string_view.h>
 #include "../../../../circuits/digital/update_table.h"
 #include "../../../model_refs/base.h"
@@ -22,6 +23,38 @@ namespace phy_engine::model
     };
 
     static_assert(::phy_engine::model::model<T_BAR_FF>);
+
+    // Four-state logic is unchanged. Ll/Hl are thresholds and ideal output
+    // voltages only; no finite output-current capability is implied.
+    inline bool set_attribute_define(model_reserve_type_t<T_BAR_FF>, T_BAR_FF& clip, ::std::size_t index, variant value) noexcept
+    {
+        if(value.type != variant_type::d || !::std::isfinite(value.d)) { return false; }
+        switch(index)
+        {
+            case 0: clip.Ll = value.d; return true;
+            case 1: clip.Hl = value.d; return true;
+            default: return false;
+        }
+    }
+    inline variant get_attribute_define(model_reserve_type_t<T_BAR_FF>, T_BAR_FF const& clip, ::std::size_t index) noexcept
+    {
+        switch(index)
+        {
+            case 0: return {.d{clip.Ll}, .type{variant_type::d}};
+            case 1: return {.d{clip.Hl}, .type{variant_type::d}};
+            default: return {};
+        }
+    }
+    inline constexpr ::fast_io::u8string_view get_attribute_name_define(model_reserve_type_t<T_BAR_FF>, ::std::size_t index) noexcept
+    {
+        switch(index)
+        {
+            case 0: return u8"Ll";
+            case 1: return u8"Hl";
+            default: return {};
+        }
+    }
+
 
     inline constexpr ::phy_engine::digital::need_operate_analog_node_t
         update_digital_clk_define(::phy_engine::model::model_reserve_type_t<T_BAR_FF>,
@@ -100,4 +133,3 @@ namespace phy_engine::model
 
     static_assert(::phy_engine::model::defines::can_generate_pin_view<T_BAR_FF>);
 }  // namespace phy_engine::model
-

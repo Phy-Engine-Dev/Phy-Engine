@@ -67,7 +67,7 @@ if (WIN32)
 endif()
 
 # 添加这一行来编译phyengine.dll
-add_library(phyengine SHARED dll_main.cpp)
+add_library(phyengine SHARED dll_main.cpp circuit_observe.cpp)
 if(PHY_ENGINE_USE_LEVELDB)
     # Allow linking LevelDB into shared libs on platforms that require PIC.
     set_property(TARGET leveldb PROPERTY POSITION_INDEPENDENT_CODE ON)
@@ -76,6 +76,9 @@ endif()
 
 # verilog -> PE netlist -> PhysicsLab .sav (with IO auto-placement)
 add_executable(verilog2plsav verilog2plsav.cpp)
+
+# Compact, paginated schematic plus authoritative netlist for vision agents.
+add_executable(circuit_view circuit_view.cpp)
 
 # verilog -> PENL (LevelDB-backed) export
 if(PHY_ENGINE_USE_LEVELDB)

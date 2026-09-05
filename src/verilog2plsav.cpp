@@ -349,6 +349,7 @@ static void usage(char const* argv0)
                         "  - Compiles Verilog (subset), synthesizes to PE netlist with optimizations,\n"
                         "    then exports PhysicsLab .sav with IO auto-placement and auto-layout.\n"
                         "options:\n"
+                        "  --strict-export                           Reject lossy PhysicsLab mappings (recommended for agents)\n"
                         "  -O0|-O1|-O2|-O3|-O4|-O5|-Omax|-Ocuda       PE synth optimization level (default: O0)\n"
                         "  --opt-level N                             PE synth optimization level (0..5)\n"
                         "  --opt-timeout-ms MS                        Omax: wall-clock budget (0 disables; default: 0)\n"
@@ -1232,6 +1233,16 @@ int main(int argc, char** argv)
         return 99;
     }
     auto r = std::move(*r_or.value);
+
+    for(auto const& warning : r.warnings)
+    {
+        ::fast_io::io::perr(::fast_io::err(), "[verilog2plsav] warning: ", ::fast_io::mnp::os_c_str(warning.c_str()), "\n");
+    }
+    if(has_flag(argc, argv, "--strict-export") && !r.warnings.empty())
+    {
+        ::fast_io::io::perr(::fast_io::err(), "error: strict export refuses an experiment with changed digital semantics\n");
+        return 1;
+    }
 
     // Keep IO elements fixed for layout.
     for(auto const& e : r.ex.elements())

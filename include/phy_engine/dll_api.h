@@ -1,7 +1,7 @@
 ﻿#pragma once
 
 // C ABI helpers for embedding Phy-Engine as a shared library.
-// This header documents the exported functions implemented in `src/dll_main.cpp`.
+// Exported functions are implemented in src/dll_main.cpp and src/circuit_observe.cpp.
 
 #include <stddef.h>
 #include <stdint.h>
@@ -85,6 +85,12 @@ extern "C"
         PHY_ENGINE_E_SQUARE = 21,    // properties: Vh,Vl,freq(Hz),duty,phase(rad)
         PHY_ENGINE_E_PULSE = 22,     // properties: Vh,Vl,freq(Hz),duty,phase(rad),tr,tf
         PHY_ENGINE_E_TRIANGLE = 23,  // properties: Vh,Vl,freq(Hz),phase(rad)
+        PHY_ENGINE_E_CLAMPED_OP_AMP = 24, // mu,Vmin,Vmax; pins +,-,out,ref
+        PHY_ENGINE_E_VOLTAGE_METER = 25, // Rinput(ohm); pins +,-; finite loading, no source
+        PHY_ENGINE_E_ANALOG_SCHMITT = 26, // Vth_low,Vth_high,inverted,Ll,Hl,slew(V/s,0=instant); pins in,out,ref
+        PHY_ENGINE_E_TRIANGLE_LOADED = 27, // Vh,Vl,freq(Hz),phase(rad),duty,Rseries(ohm); pins +,-
+        PHY_ENGINE_E_RELAY_CURRENT_SPDT = 28, // L,R,Ipull,Idrop,Ron,Roff,OperateDelay,ReleaseDelay,InitialEngaged; NC,COM,NO,coil+,coil-
+        PHY_ENGINE_E_FUSE_LATCHED = 29, // RatedCurrent,TripCurrent,Ron,Roff,Enabled,InitialBlown; P,N; instantaneous engineering trip
 
         // Additional non-linear devices
         PHY_ENGINE_E_BJT_NPN = 50,  // properties: Is,N,BetaF,Temp,Area
@@ -177,6 +183,27 @@ extern "C"
     int circuit_set_tnom(void* circuit_ptr, double tnom_c);
     int circuit_set_model_double_by_name(void* circuit_ptr, size_t vec_pos, size_t chunk_pos, char const* name, size_t name_size, double value);
     int circuit_analyze(void* circuit_ptr);
+    // Static ideal-voltage mixed-signal settling. type: 0=OP,1=DC only.
+    // Returns 3 for conflicting drives/nonsettling feedback/failed native solve.
+    int circuit_run_mixed_dc(void* circuit_ptr, uint32_t analyze_type);
+    // Capacity is the length of each flat pin/current output array. Prefix
+    // arrays contain comp_size+1 entries. Pure digital nodes are never read
+    // through analog union storage; digital values preserve L/H/X/Z.
+    int circuit_sample_complex(void* circuit_ptr, size_t* vec_pos, size_t* chunk_pos,
+                               size_t comp_size, size_t capacity, double* voltage_real,
+                               double* voltage_imag, size_t* voltage_ord, double* current_real,
+                               double* current_imag, size_t* current_ord, uint8_t* digital);
+    int circuit_get_model_scalar(void* circuit_ptr, size_t vec_pos, size_t chunk_pos,
+                                 size_t attribute, double* output);
+    typedef int (*phy_engine_trace_callback)(void* user, double actual_time, size_t completed_steps);
+    // Exact-endpoint TR. A callback observes only completed native solves;
+    // nonzero callback return stops with rc4 and preserves the reported time.
+    // Failed trial state is not rollback-safe: rebuild the handle before reuse.
+    int circuit_run_transient_bounded(void* circuit_ptr, double step, double stop,
+                                      size_t max_steps, double* actual_stop, size_t* actual_steps);
+    int circuit_run_transient_trace(void* circuit_ptr, double step, double stop,
+                                    size_t max_steps, size_t sample_every, phy_engine_trace_callback callback,
+                                    void* user, double* actual_stop, size_t* actual_steps, size_t* actual_samples);
     int circuit_digital_clk(void* circuit_ptr);
 
     // Query prefix-sum layouts used by `circuit_sample()` / `circuit_sample_u8()`.

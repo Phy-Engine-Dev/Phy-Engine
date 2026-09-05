@@ -889,7 +889,23 @@ namespace phy_engine
             has_prepare = true;
         }
 
-        [[nodiscard]] bool solve() noexcept
+        // Commit every event against the same fully converged solution, not
+        // against a partially checked model-order-dependent Newton iterate.
+        [[nodiscard]] bool commit_converged_states() noexcept
+        {
+            bool unchanged{true};
+            for(auto& block: nl.models)
+            {
+                for(auto m{block.begin}; m != block.curr; ++m)
+                {
+                    if(m->type != ::phy_engine::model::model_type::normal || m->ptr == nullptr) { continue; }
+                    if(!m->ptr->commit_converged_state()) { unchanged = false; }
+                }
+            }
+            return unchanged;
+        }
+
+        [[nodiscard]] bool solve(bool commit_state = true) noexcept
         {
             if(at == ::phy_engine::analyze_type::AC) { return solve_once(); }
 
@@ -963,6 +979,8 @@ namespace phy_engine
                         if(!converged) { break; }
                     }
                 }
+
+                if(converged && commit_state && !commit_converged_states()) { converged = false; }
 
                 if(converged)
                 {

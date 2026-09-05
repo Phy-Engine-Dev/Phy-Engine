@@ -63,6 +63,16 @@ namespace phy_engine::model
 
     static_assert(::phy_engine::model::defines::can_iterate_dc<full_bridge_rectifier>);
 
+    inline bool check_convergence_define(::phy_engine::model::model_reserve_type_t<full_bridge_rectifier>, full_bridge_rectifier const& r) noexcept
+    {
+        // Internal junctions are not separate entries in the netlist; forward
+        // their constitutive checks instead of trusting only global deltas.
+        return check_convergence_define(::phy_engine::model::model_reserve_type<PN_junction>, r.D1) &&
+               check_convergence_define(::phy_engine::model::model_reserve_type<PN_junction>, r.D2) &&
+               check_convergence_define(::phy_engine::model::model_reserve_type<PN_junction>, r.D3) &&
+               check_convergence_define(::phy_engine::model::model_reserve_type<PN_junction>, r.D4);
+    }
+
     inline constexpr bool iterate_ac_define(::phy_engine::model::model_reserve_type_t<full_bridge_rectifier>,
                                             full_bridge_rectifier& r,
                                             ::phy_engine::MNA::MNA& mna,
@@ -97,4 +107,3 @@ namespace phy_engine::model
 
     static_assert(::phy_engine::model::defines::can_generate_pin_view<full_bridge_rectifier>);
 }  // namespace phy_engine::model
-

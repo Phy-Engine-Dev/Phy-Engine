@@ -19,6 +19,9 @@
 #include <phy_engine/model/models/linear/transformer_center_tap.h>
 #include <phy_engine/model/models/linear/coupled_inductors.h>
 #include <phy_engine/model/models/linear/op_amp.h>
+#include <phy_engine/model/models/linear/voltage_meter.h>
+#include <phy_engine/model/models/controller/clamped_op_amp.h>
+#include <phy_engine/model/models/controller/analog_schmitt.h>
 
 #include <phy_engine/model/models/controller/relay.h>
 #include <phy_engine/model/models/controller/comparator.h>
@@ -27,6 +30,8 @@
 #include <phy_engine/model/models/generator/square.h>
 #include <phy_engine/model/models/generator/pulse.h>
 #include <phy_engine/model/models/generator/triangle.h>
+#include <phy_engine/model/models/controller/relay_current_spdt.h>
+#include <phy_engine/model/models/controller/fuse_latched.h>
 
 #include <phy_engine/model/models/non-linear/BJT_NPN.h>
 #include <phy_engine/model/models/non-linear/BJT_PNP.h>
@@ -1871,6 +1876,79 @@ void build_netlist_from_wires(phy_engine::netlist::netlist& nl,
             g.phase = *((*curr_prop_ptr)++);
             return add_model(nl, ::std::move(g));
         }
+        case 24:
+        {
+            // Finite-gain, hard-clamped behavioral op amp: mu,Vmin,Vmax.
+            ::phy_engine::model::clamped_op_amp a{};
+            a.mu=*((*curr_prop_ptr)++);
+            a.Vmin=*((*curr_prop_ptr)++);
+            a.Vmax=*((*curr_prop_ptr)++);
+            if(!prepare_foundation_define(::phy_engine::model::model_reserve_type_t<::phy_engine::model::clamped_op_amp>{},a)) return {};
+            return add_model(nl, ::std::move(a));
+        }
+        case 25:
+        {
+            // Finite-input-resistance voltage meter, never a 0 V source.
+            ::phy_engine::model::voltage_meter m{.Rinput=*((*curr_prop_ptr)++)};
+            if(!prepare_foundation_define(::phy_engine::model::model_reserve_type_t<::phy_engine::model::voltage_meter>{},m)) return {};
+            return add_model(nl, ::std::move(m));
+        }
+        case 26:
+        {
+            // Analog Schmitt: thresholds,inverted,Ll,Hl,slew (explicit V/s).
+            ::phy_engine::model::analog_schmitt s{};
+            s.Vth_low=*((*curr_prop_ptr)++);
+            s.Vth_high=*((*curr_prop_ptr)++);
+            double const inverted=*((*curr_prop_ptr)++);
+            s.inverted=inverted!=0;
+            s.Ll=*((*curr_prop_ptr)++);
+            s.Hl=*((*curr_prop_ptr)++);
+            s.slew_v_per_s=*((*curr_prop_ptr)++);
+            if(inverted!=0 && inverted!=1) return {};
+            if(!prepare_foundation_define(::phy_engine::model::model_reserve_type_t<::phy_engine::model::analog_schmitt>{},s)) return {};
+            return add_model(nl, ::std::move(s));
+        }
+        case 27:
+        {
+            // Triangle with duty and Thevenin resistance. Code 23 stays ABI compatible.
+            ::phy_engine::model::triangle_gen g{};
+            g.Vh=*((*curr_prop_ptr)++);
+            g.Vl=*((*curr_prop_ptr)++);
+            g.freq=*((*curr_prop_ptr)++);
+            g.phase=*((*curr_prop_ptr)++);
+            g.duty=*((*curr_prop_ptr)++);
+            g.series_resistance=*((*curr_prop_ptr)++);
+            if(!prepare_foundation_define(::phy_engine::model::model_reserve_type_t<::phy_engine::model::triangle_gen>{},g)) return {};
+            return add_model(nl, ::std::move(g));
+        }
+        case 28:
+        {
+            // Current-operated SPDT relay: L,R,Ipull,Idrop,Ron,Roff,
+            // OperateDelay,ReleaseDelay,InitialEngaged. Legacy code 18 is unchanged.
+            ::phy_engine::model::relay_current_spdt relay{};
+            for(::std::size_t index{}; index != 9; ++index)
+            {
+                double const value{*((*curr_prop_ptr)++)};
+                if(!set_attribute_define(::phy_engine::model::model_reserve_type_t<::phy_engine::model::relay_current_spdt>{},
+                    relay, index, {.d{value}, .type{::phy_engine::model::variant_type::d}})) { return {}; }
+            }
+            if(!relay.valid()) { return {}; }
+            return add_model(nl, ::std::move(relay));
+        }
+        case 29:
+        {
+            // Finite-resistance instantaneous overcurrent fuse. State is
+            // latched until explicit Reset; source ratings are not fitted.
+            ::phy_engine::model::fuse_latched fuse{};
+            for(::std::size_t index{}; index != 6; ++index)
+            {
+                double const value{*((*curr_prop_ptr)++)};
+                if(!set_attribute_define(::phy_engine::model::model_reserve_type_t<::phy_engine::model::fuse_latched>{},
+                    fuse, index, {.d{value}, .type{::phy_engine::model::variant_type::d}})) { return {}; }
+            }
+            if(!fuse.valid()) { return {}; }
+            return add_model(nl, ::std::move(fuse));
+        }
         case 50:
         {
             // NPN BJT: Is, N, BetaF, Temp, Area
@@ -2247,8 +2325,13 @@ extern "C" int
 
     ::std::size_t idx{};
     if(!find_attribute_index_by_name(model, name, name_size, idx)) { return 3; }
-    set_property(model, idx, value);
-    return 0;
+    if(!::std::isfinite(value)) { return 4; }
+    if(model->ptr->set_attribute(idx, {.d{value}, .type{::phy_engine::model::variant_type::d}})) { return 0; }
+    if(model->ptr->set_attribute(idx, {.boolean{value != 0.0}, .type{::phy_engine::model::variant_type::boolean}})) { return 0; }
+    auto digital = value == 0.0 ? ::phy_engine::model::digital_node_statement_t::false_state
+                 : value == 1.0 ? ::phy_engine::model::digital_node_statement_t::true_state
+                                : ::phy_engine::model::digital_node_statement_t::indeterminate_state;
+    return model->ptr->set_attribute(idx, {.digital{digital}, .type{::phy_engine::model::variant_type::digital}}) ? 0 : 4;
 }
 
 extern "C" int circuit_analyze(void* circuit_ptr)

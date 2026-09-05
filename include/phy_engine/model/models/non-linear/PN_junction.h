@@ -14,6 +14,15 @@ namespace phy_engine::model
             if(x < -50.0) { return ::std::exp(-50.0); }
             return ::std::exp(x);
         }
+
+        inline double limexp_derivative(double x) noexcept
+        {
+            // Derivative of the same C1 upper tangent, not its function value.
+            // At the lower numerical floor the continuation is constant.
+            if(x > 50.0) { return ::std::exp(50.0); }
+            if(x < -50.0) { return 0.0; }
+            return ::std::exp(x);
+        }
     }  // namespace pn_details
 
     struct PN_junction
@@ -54,6 +63,26 @@ namespace phy_engine::model
     };
 
     static_assert(::phy_engine::model::model<PN_junction>);
+
+    namespace pn_details
+    {
+        struct conduction_result { double current{}, conductance{}; };
+
+        inline conduction_result conduction(PN_junction const& pn, double voltage) noexcept
+        {
+            double const thermal{pn.N * pn.Ut};
+            if(pn.Bv_set && voltage < -pn.Bv_eff)
+            {
+                double const x{-(pn.Bv_eff + voltage) / thermal};
+                return {-pn.Is_eff * limexp(x), pn.Is_eff * limexp_derivative(x) / thermal};
+            }
+            double const x{voltage / thermal};
+            double const recombination_thermal{pn.Nr * pn.Ut};
+            double const xr{voltage / recombination_thermal};
+            return {pn.Is_eff * (limexp(x) - 1.0) + pn.Isr_eff * (limexp(xr) - 1.0),
+                    pn.Is_eff * limexp_derivative(x) / thermal + pn.Isr_eff * limexp_derivative(xr) / recombination_thermal};
+        }
+    }
 
     inline constexpr double vlimit(PN_junction const& pn, double Ud) noexcept
     {
@@ -366,27 +395,10 @@ namespace phy_engine::model
             Ud = vlimit(pn, Ud);
             pn.Ud_last = Ud;
 
-            double Id;
-            double const Ute{pn.N * pn.Ut};
-            double const Uter{pn.Nr * pn.Ut};
-
-            if(pn.Bv_set && Ud < -pn.Bv_eff) /* breakdown */
-            {
-                double e{pn_details::limexp(-(pn.Bv_eff + Ud) / Ute)};
-                Id = -pn.Is_eff * e;
-                pn.geq = pn.Is_eff * e / Ute;
-            }
-            else
-            {
-                double e{pn_details::limexp(Ud / Ute)};
-                pn.geq = pn.Is_eff * e / Ute;
-                Id = pn.Is_eff * (e - 1.0);
-
-                /* recombination current */
-                e = pn_details::limexp(Ud / Uter);
-                pn.geq += pn.Isr_eff * e / Uter;
-                Id += pn.Isr_eff * (e - 1.0);
-            }
+            auto const evaluated{pn_details::conduction(pn, Ud)};
+            double const Id{evaluated.current};
+            pn.geq = evaluated.conductance;
+            if(!::std::isfinite(Id) || !::std::isfinite(pn.geq)) { return false; }
 
             pn.Ieq = Id - Ud * pn.geq;
 
@@ -402,6 +414,25 @@ namespace phy_engine::model
     }
 
     static_assert(::phy_engine::model::defines::can_iterate_dc<PN_junction>);
+
+    inline bool check_convergence_define(::phy_engine::model::model_reserve_type_t<PN_junction>, PN_junction const& pn) noexcept
+    {
+        auto const node_0{pn.pins[0].nodes};
+        auto const node_1{pn.pins[1].nodes};
+        if(!node_0 || !node_1 || !(pn.N > 0.0) || !(pn.Nr > 0.0) || !(pn.Ut > 0.0)) { return false; }
+        double const voltage{node_0->node_information.an.voltage.real() - node_1->node_information.an.voltage.real()};
+        if(!::std::isfinite(voltage)) { return false; }
+        // A stable global voltage is insufficient while vlimit still advances
+        // a low-Is junction. Compare its UNLIMITED constitutive current at the
+        // solved voltage to the conduction stamp, not to another limited value.
+        double const current{pn_details::conduction(pn, voltage).current};
+        double const stamped{pn.Ieq + pn.geq * voltage};
+        if(!::std::isfinite(current) || !::std::isfinite(stamped)) { return false; }
+        double const tolerance{1e-12 + 1e-8 * ::std::max(::std::abs(current), ::std::abs(stamped))};
+        return ::std::abs(current - stamped) <= tolerance;
+    }
+
+    static_assert(::phy_engine::model::defines::can_check_convergence<PN_junction>);
 
     inline constexpr bool
         iterate_ac_define(::phy_engine::model::model_reserve_type_t<PN_junction>, PN_junction& pn, ::phy_engine::MNA::MNA& mna, double omega) noexcept
@@ -481,7 +512,7 @@ namespace phy_engine::model
                                             [[maybe_unused]] double /*t_time*/) noexcept
     {
         // Non-linear diode conduction (same as DC stamping) in parallel with an optional diffusion-capacitance companion.
-        (void)iterate_dc_define(::phy_engine::model::model_reserve_type<PN_junction>, pn, mna);
+        if(!iterate_dc_define(::phy_engine::model::model_reserve_type<PN_junction>, pn, mna)) { return false; }
 
         auto const node_0{pn.pins[0].nodes};
         auto const node_1{pn.pins[1].nodes};

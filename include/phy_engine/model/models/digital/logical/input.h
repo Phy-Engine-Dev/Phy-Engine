@@ -1,4 +1,5 @@
 #pragma once
+#include <cmath>
 #include <fast_io/fast_io_dsal/string_view.h>
 #include "../../../../circuits/digital/update_table.h"
 #include "../../../model_refs/base.h"
@@ -40,6 +41,14 @@ namespace phy_engine::model
                 clip.outputA = vi.digital;
                 return true;
             }
+            case 1:
+                if(vi.type != ::phy_engine::model::variant_type::d || !::std::isfinite(vi.d)) { return false; }
+                clip.Ll = vi.d;
+                return true;
+            case 2:
+                if(vi.type != ::phy_engine::model::variant_type::d || !::std::isfinite(vi.d)) { return false; }
+                clip.Hl = vi.d;
+                return true;
             default:
             {
                 return false;
@@ -59,6 +68,8 @@ namespace phy_engine::model
             {
                 return {.digital{clip.outputA}, .type{::phy_engine::model::variant_type::digital}};
             }
+            case 1: return {.d{clip.Ll}, .type{::phy_engine::model::variant_type::d}};
+            case 2: return {.d{clip.Hl}, .type{::phy_engine::model::variant_type::d}};
             default:
             {
                 return {};
@@ -77,6 +88,8 @@ namespace phy_engine::model
             {
                 return {u8"boolean"};
             }
+            case 1: return u8"Ll";
+            case 2: return u8"Hl";
             default:
             {
                 return {};

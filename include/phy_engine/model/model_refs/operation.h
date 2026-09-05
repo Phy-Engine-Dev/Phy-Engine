@@ -198,7 +198,18 @@ namespace phy_engine::model
         // no model-specific checks for convergence
         if constexpr(::phy_engine::model::defines::can_check_convergence<mod>)
         {
-            return check_convergence_define(::phy_engine::model::model_reserve_type<::std::remove_cvref_t<mod>>, ::std::forward<mod>(m));
+            return check_convergence_define(::phy_engine::model::model_reserve_type<::std::remove_cvref_t<mod>>,
+                static_cast<::std::remove_cvref_t<mod> const&>(m));
+        }
+        else { return true; }
+    }
+
+    template <::phy_engine::model::model mod>
+    inline constexpr bool commit_converged_state(mod&& m) noexcept
+    {
+        if constexpr(::phy_engine::model::defines::can_commit_converged_state<mod>)
+        {
+            return commit_converged_state_define(::phy_engine::model::model_reserve_type<::std::remove_cvref_t<mod>>, ::std::forward<mod>(m));
         }
         else { return true; }
     }

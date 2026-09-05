@@ -118,8 +118,13 @@ namespace phy_engine::model
         };
 
         template <typename mod>
-        concept can_check_convergence = requires(mod&& t) {
+        concept can_check_convergence = requires(::std::remove_cvref_t<mod> const& t) {
             { check_convergence_define(model_reserve_type<::std::remove_cvref_t<mod>>, t) } -> ::std::same_as<bool>;
+        };
+
+        template <typename mod>
+        concept can_commit_converged_state = requires(mod&& t) {
+            { commit_converged_state_define(model_reserve_type<::std::remove_cvref_t<mod>>, t) } -> ::std::same_as<bool>;
         };
 
         template <typename mod>
