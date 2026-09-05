@@ -55,12 +55,15 @@ streams and function signatures remain compatible.
 
 ## Digital levels and mixed-signal analysis
 
-The existing named-scalar ABI accepts `Ll` and `Hl` for INPUT, NOT, TFF,
+The existing named-scalar ABI accepts `Ll` and `Hl` for INPUT, OUTPUT, NOT, TFF,
 T_BAR_FF and JKFF. INPUT keeps its original digital attribute 0; levels occupy
-1/2. The other four models use indices 0/1. Values must be finite, with zero and
-negative levels allowed. Legacy creation streams/default 0/5 V are unchanged.
-Other basic gates already expose the same names. Digital outputs remain ideal
-voltage drivers: saved maximum-current ratings are not silently implemented
+1/2. OUTPUT likewise keeps its legacy read-only digital observation at index 0
+and adds analog input thresholds at indices 1/2. It never injects an analog
+drive; pure-digital observations and its existing transition-settling timing
+are unchanged. The other four models use indices 0/1. Values must be finite,
+with zero and negative levels allowed. Legacy creation streams/default 0/5 V
+are unchanged. Other basic gates already expose the same names. Gate output
+drivers remain ideal voltage sources: saved maximum-current ratings are not silently implemented
 as physical limits, and must be disclosed or rejected by an adapter.
 
 `circuit_run_mixed_dc(circuit, type)` supports type 0 (OP) and 1 (DC).

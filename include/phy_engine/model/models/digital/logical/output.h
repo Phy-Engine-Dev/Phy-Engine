@@ -1,4 +1,5 @@
 #pragma once
+#include <cmath>
 #include <fast_io/fast_io_dsal/string_view.h>
 #include "../../../../circuits/digital/update_table.h"
 #include "../../../model_refs/base.h"
@@ -34,7 +35,15 @@ namespace phy_engine::model
     inline constexpr bool
         set_attribute_define(::phy_engine::model::model_reserve_type_t<OUTPUT>, OUTPUT& clip, ::std::size_t n, ::phy_engine::model::variant vi) noexcept
     {
-        return false;
+        // Attribute 0 remains the legacy read-only digital observation.
+        // Observer thresholds do not inject an analog voltage/current drive.
+        if(vi.type != ::phy_engine::model::variant_type::d || !::std::isfinite(vi.d)) { return false; }
+        switch(n)
+        {
+            case 1: clip.Ll = vi.d; return true;
+            case 2: clip.Hl = vi.d; return true;
+            default: return false;
+        }
     }
 
     static_assert(::phy_engine::model::defines::has_set_attribute<OUTPUT>);
@@ -48,6 +57,8 @@ namespace phy_engine::model
             {
                 return {.digital{clip.inputA}, .type{::phy_engine::model::variant_type::digital}};
             }
+            case 1: return {.d{clip.Ll}, .type{::phy_engine::model::variant_type::d}};
+            case 2: return {.d{clip.Hl}, .type{::phy_engine::model::variant_type::d}};
             default:
             {
                 return {};
@@ -66,6 +77,8 @@ namespace phy_engine::model
             {
                 return {u8"value"};
             }
+            case 1: return u8"Ll";
+            case 2: return u8"Hl";
             default:
             {
                 return {};

@@ -59,10 +59,48 @@ template<class T> void gate_drive(T m,std::size_t output_pin)
     drive=update_digital_clk_define(pe::model::model_reserve_type<T>,m,table,2.0,pe::model::digital_update_method_t::update_table);
     close(drive.voltage,3.3);
 }
+static void observer_thresholds()
+{
+    using state = pe::model::digital_node_statement_t;
+    using pe::model::variant_type;
+    pe::model::OUTPUT output{};
+    attributes(output,1,2);
+    assert(!set_attribute_define(pe::model::model_reserve_type<pe::model::OUTPUT>,output,0,
+                                {.digital{state::H},.type{variant_type::digital}}));
+    assert(!set_attribute_define(pe::model::model_reserve_type<pe::model::OUTPUT>,output,0,
+                                {.d{1},.type{variant_type::d}}));
+    assert(get_attribute_define(pe::model::model_reserve_type<pe::model::OUTPUT>,output,0).type==variant_type::digital);
+    assert(get_attribute_name_define(pe::model::model_reserve_type<pe::model::OUTPUT>,0)==u8"value");
+    // Real analog-node observations use the configured -1/3.3 V thresholds,
+    // not legacy 0/5 V. No analog drive is created by this input-only device.
+    pe::model::node_t node{}; node.num_of_analog_node=1; output.pins.nodes=&node;
+    pe::digital::digital_node_update_table table{};
+    auto read = [&](double voltage, double time)
+    {
+        node.node_information.an.voltage={voltage,0};
+        auto drive=update_digital_clk_define(pe::model::model_reserve_type<pe::model::OUTPUT>,output,
+                                            table,time,pe::model::digital_update_method_t::update_table);
+        assert(drive.need_to_operate_analog_node==nullptr);
+        return get_attribute_define(pe::model::model_reserve_type<pe::model::OUTPUT>,output,0).digital;
+    };
+    assert(read(3.4,1.0)==state::H);
+    assert(read(-1.1,2.0)==state::X); // Original transition settling time remains intact.
+    assert(read(-1.1,2.1)==state::L);
+    assert(read(0.0,3.0)==state::L); // Above Ll but below Hl retains the low state.
+    assert(read(3.4,4.0)==state::X);
+    assert(read(3.4,4.1)==state::H);
+    // Pure-digital observation is still direct and unchanged by analog thresholds.
+    node.num_of_analog_node=0;node.node_information.dn.state=state::Z;
+    auto drive=update_digital_clk_define(pe::model::model_reserve_type<pe::model::OUTPUT>,output,
+                                        table,5.0,pe::model::digital_update_method_t::update_table);
+    assert(drive.need_to_operate_analog_node==nullptr);
+    assert(get_attribute_define(pe::model::model_reserve_type<pe::model::OUTPUT>,output,0).digital==state::Z);
+}
 int main()
 {
     input_loaded();
+    observer_thresholds();
     gate_drive(pe::model::NOT{},1); gate_drive(pe::model::TFF{},2);
     gate_drive(pe::model::T_BAR_FF{},2); gate_drive(pe::model::JKFF{},3);
-    std::puts("digital output levels: finite attributes, legacy state, loaded INPUT and NOT/T/T-bar/JK drives passed");
+    std::puts("digital levels: finite attributes, legacy state, loaded INPUT, NOT/T/T-bar/JK drives and OUTPUT analog thresholds passed");
 }
